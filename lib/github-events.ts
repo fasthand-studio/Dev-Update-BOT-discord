@@ -2,7 +2,7 @@ import { supabase } from "./supabase.js";
 import { sendDiscordWebhook } from "./discord.js";
 import { formatIssueEmbed, formatPREmbed, formatPushEmbed, formatReleaseEmbed } from "./format.js";
 import { env } from "./env.js";
-import { syncInstallationsAndRepositories, upsertContributor, upsertRepositoryFromPayload } from "./github.js";
+import { normalizeTimestamp, syncInstallationsAndRepositories, upsertContributor, upsertRepositoryFromPayload } from "./github.js";
 
 type Ctx = { deliveryId: string; event: string; payload: any };
 
@@ -81,7 +81,7 @@ async function handlePush({ payload, deliveryId }: Ctx, repoRow: any, actor: any
     title: `Push to ${repoRow?.full_name ?? "repository"}`,
     summary: `${commits.length} commit(s)`,
     payload,
-    occurred_at: payload?.head_commit?.timestamp ?? new Date().toISOString(),
+    occurred_at: normalizeTimestamp(payload?.head_commit?.timestamp) ?? new Date().toISOString(),
   }).select("id").single();
 
   for (const c of commits) {
@@ -96,7 +96,7 @@ async function handlePush({ payload, deliveryId }: Ctx, repoRow: any, actor: any
       committer_login: c.committer?.username ?? null,
       url: c.url ?? null,
       branch,
-      occurred_at: c.timestamp ?? null,
+      occurred_at: normalizeTimestamp(c.timestamp),
       push_event_id: ev?.id ?? null,
     }, { onConflict: "repository_id,sha" });
   }
@@ -134,10 +134,10 @@ async function handlePullRequest({ payload, deliveryId }: Ctx, repoRow: any, act
       html_url: pr.html_url,
       base_ref: pr.base?.ref ?? null,
       head_ref: pr.head?.ref ?? null,
-      created_at_gh: pr.created_at ?? null,
-      updated_at_gh: pr.updated_at ?? null,
-      closed_at_gh: pr.closed_at ?? null,
-      merged_at_gh: pr.merged_at ?? null,
+      created_at_gh: normalizeTimestamp(pr.created_at),
+      updated_at_gh: normalizeTimestamp(pr.updated_at),
+      closed_at_gh: normalizeTimestamp(pr.closed_at),
+      merged_at_gh: normalizeTimestamp(pr.merged_at),
       additions: pr.additions ?? null,
       deletions: pr.deletions ?? null,
       changed_files: pr.changed_files ?? null,
@@ -159,7 +159,7 @@ async function handlePullRequest({ payload, deliveryId }: Ctx, repoRow: any, act
     summary: `PR #${pr.number} ${action}`,
     url: pr.html_url,
     payload,
-    occurred_at: pr.updated_at ?? new Date().toISOString(),
+    occurred_at: normalizeTimestamp(pr.updated_at) ?? new Date().toISOString(),
   }).select("id").single();
 
   // Notify for core actions; avoid spamming on every synchronize unless desired? Spec says "updated" - include synchronize.
@@ -202,7 +202,7 @@ async function handleRelease({ payload, deliveryId }: Ctx, repoRow: any, actor: 
     summary: `Release ${rel.tag_name} ${action}`,
     url: rel.html_url,
     payload,
-    occurred_at: rel.published_at ?? rel.created_at ?? new Date().toISOString(),
+    occurred_at: normalizeTimestamp(rel.published_at) ?? normalizeTimestamp(rel.created_at) ?? new Date().toISOString(),
   }).select("id").single();
 
   if (["published", "released", "prereleased"].includes(action)) {
@@ -243,7 +243,7 @@ async function handleIssues({ payload, deliveryId }: Ctx, repoRow: any, actor: a
     summary: `Issue #${issue.number} ${action}`,
     url: issue.html_url,
     payload,
-    occurred_at: issue.updated_at ?? new Date().toISOString(),
+    occurred_at: normalizeTimestamp(issue.updated_at) ?? new Date().toISOString(),
   }).select("id").single();
 
   // "important repository activity" - issues opened/closed are worth notifying; keep concise.

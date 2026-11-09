@@ -30,7 +30,7 @@ export async function installationOctokit(installationId: number): Promise<Octok
   });
 }
 
-function normalizeTimestamp(value: unknown): string | null {
+export function normalizeTimestamp(value: unknown): string | null {
   if (value == null || value === "") return null;
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -95,7 +95,7 @@ export async function syncInstallationsAndRepositories(): Promise<{ installation
         default_branch: repo.default_branch ?? null,
         html_url: repo.html_url,
         description: repo.description ?? null,
-        pushed_at: repo.pushed_at ?? null,
+        pushed_at: normalizeTimestamp(repo.pushed_at),
         active: true,
       }, { onConflict: "github_id" });
     }
@@ -129,7 +129,7 @@ export async function upsertRepositoryFromPayload(repo: any, installationId?: nu
     default_branch: repo.default_branch ?? null,
     html_url: repo.html_url ?? null,
     description: repo.description ?? null,
-    pushed_at: repo.pushed_at ?? null,
+    pushed_at: normalizeTimestamp(repo.pushed_at),
     active: true,
   }, { onConflict: "github_id" }).select("id, full_name, html_url, installation_id").single();
   if (error) throw error;
