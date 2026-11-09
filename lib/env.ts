@@ -42,6 +42,7 @@ export const env = {
   get AI_API_KEY() { return optional("AI_API_KEY"); },
   get AI_BASE_URL() { return optional("AI_BASE_URL") ?? "https://api.openai.com/v1"; },
   get AI_MODEL() { return optional("AI_MODEL") ?? "gpt-4o-mini"; },
+  get CLOUDFLARE_ACCOUNT_ID() { return optional("CLOUDFLARE_ACCOUNT_ID"); },
 
   get CRON_SECRET() { return optional("CRON_SECRET"); },
   get LOG_DEBUG() { return optionalBool("LOG_DEBUG", false); },

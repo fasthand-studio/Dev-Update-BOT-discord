@@ -133,9 +133,10 @@ The AI summarizer is stateless and receives structured JSON for each request. It
 
 Supported configuration:
 - `AI_PROVIDER=openai-compatible` (default): calls `POST ${AI_BASE_URL}/chat/completions`
-- `AI_PROVIDER=anthropic-messages`: calls Anthropic Messages API using `AI_BASE_URL` (default base can be overridden)
+- `AI_PROVIDER=anthropic-messages`: calls Anthropic Messages API
+- `AI_PROVIDER=cloudflare`: calls Cloudflare Workers AI `POST /client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/run/{AI_MODEL}`
 
-Set `AI_API_KEY`, `AI_BASE_URL` (if needed), and `AI_MODEL`.
+Set `AI_API_KEY` and `AI_MODEL`. For Cloudflare, also set `CLOUDFLARE_ACCOUNT_ID` and use a Cloudflare API token with Workers AI access as `AI_API_KEY` (example model: `@cf/ibm-granite/granite-4.0-h-micro`). `AI_BASE_URL` is optional (defaults to Cloudflare's API base for the Cloudflare provider).
 
 ### 6. Deploy to Vercel
 
@@ -179,10 +180,11 @@ See [`.env.example`](.env.example) for the full list.
 | `DISCORD_BOT_TOKEN` | yes | Used by command registration script |
 | `DISCORD_UPDATES_WEBHOOK_URL` | yes | Real-time activity channel webhook |
 | `DISCORD_WEEKLY_WEBHOOK_URL` | yes | Weekly report channel webhook |
-| `AI_PROVIDER` | no | `openai-compatible` or `anthropic-messages` |
-| `AI_API_KEY` | for AI | AI provider API key |
+| `AI_PROVIDER` | no | `openai-compatible`, `anthropic-messages`, or `cloudflare` |
+| `AI_API_KEY` | for AI | AI provider API key / Cloudflare API token |
 | `AI_BASE_URL` | no | AI API base URL |
-| `AI_MODEL` | no | AI model name |
+| `AI_MODEL` | no | AI model name (for Cloudflare, e.g. `@cf/ibm-granite/granite-4.0-h-micro`) |
+| `CLOUDFLARE_ACCOUNT_ID` | for Cloudflare AI | Cloudflare account ID used by Workers AI |
 | `CRON_SECRET` | recommended | Protects cron/manual endpoints |
 
 ## Reliability notes
