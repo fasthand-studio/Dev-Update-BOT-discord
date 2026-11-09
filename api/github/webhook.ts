@@ -38,8 +38,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await handleGitHubEvent({ deliveryId, event, payload });
     await finishDelivery(deliveryId, "processed");
     return res.status(200).json({ ok: true, ...result });
-  } catch (err) {
-    console.error("GitHub webhook error", err instanceof Error ? err.message : "unknown error");
+  } catch (err: any) {
+    const detail = err instanceof Error
+      ? `${err.message}${err.stack ? `\n${err.stack}` : ""}`
+      : (err?.message || err?.details || err?.hint || err?.code || JSON.stringify(err) || "unknown error");
+    console.error("GitHub webhook error", detail);
     const deliveryId = String(req.headers["x-github-delivery"] ?? "");
     if (deliveryId) await finishDelivery(deliveryId, "failed", "processing error").catch(() => null);
     return res.status(500).json({ error: "Webhook processing failed" });
