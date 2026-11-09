@@ -114,8 +114,22 @@ export async function syncInstallationsAndRepositories(): Promise<{ installation
   return { installations: ids.length, repositories: repoCount };
 }
 
-export async function upsertRepositoryFromPayload(repo: any, installationId?: number | null) {
+export async function ensureInstallation(installationId: number, payload: any) {
+  const account = payload?.installation?.account ?? payload?.organization ?? payload?.repository?.owner ?? {};
+  const login = account?.login ?? payload?.repository?.owner?.login ?? `installation-${installationId}`;
+  const type = account?.type ?? (payload?.organization ? "Organization" : "User");
+  const { error } = await supabase.from("github_installations").upsert({
+    id: installationId,
+    account_login: String(login),
+    account_type: String(type),
+    account_id: account?.id ?? null,
+  }, { onConflict: "id" });
+  if (error) throw error;
+}
+
+export async function upsertRepositoryFromPayload(repo: any, installationId?: number | null, payload?: any) {
   if (!repo?.id || !repo?.full_name) return null;
+  if (installationId) await ensureInstallation(installationId, payload);
   const [ownerLogin, name] = String(repo.full_name).split("/");
   const { data, error } = await supabase.from("repositories").upsert({
     github_id: repo.id,

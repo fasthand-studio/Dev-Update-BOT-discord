@@ -17,7 +17,7 @@ export async function handleGitHubEvent(ctx: Ctx): Promise<{ handled: string; no
     await syncInstallationsAndRepositories().catch(() => null);
   }
 
-  const repoRow = await upsertRepositoryFromPayload(payload?.repository, installationId);
+  const repoRow = await upsertRepositoryFromPayload(payload?.repository, installationId, payload);
   const actorUser = payload?.sender ?? payload?.pusher;
   const actor = await upsertContributor(actorUser);
 
