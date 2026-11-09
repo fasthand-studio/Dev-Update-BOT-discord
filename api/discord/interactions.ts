@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { CHANNEL_MESSAGE, PONG, verifyDiscordInteraction } from "../../lib/discord.js";
+import { CHANNEL_MESSAGE, PONG, verifyDiscordInteraction, type DiscordEmbed } from "../../lib/discord.js";
 import { getOverviewStats, getRepositoryActivity, getTopContributors, lastNDays } from "../../lib/stats.js";
 import { supabase } from "../../lib/supabase.js";
 
@@ -27,6 +27,14 @@ function opt(interaction: any, name: string): string | undefined {
 
 function msg(content: string) {
   return { type: CHANNEL_MESSAGE, data: { content: content.slice(0, 1900), allowed_mentions: { parse: [] } } };
+}
+
+function embedMsg(embed: DiscordEmbed) {
+  return { type: CHANNEL_MESSAGE, data: { embeds: [embed], allowed_mentions: { parse: [] } } };
+}
+
+function infoEmbed(title: string, description: string, color = 0x5865f2): DiscordEmbed {
+  return { title, description: description.slice(0, 4096), color, timestamp: new Date().toISOString() };
 }
 
 function errMsg(e: unknown) {
@@ -57,73 +65,120 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const days = Math.min(90, Math.max(1, Number(opt(interaction, "days") ?? "7") || 7));
     const period = lastNDays(days);
 
-    const content = await withTimeout((async () => {
+    const payload = await withTimeout((async () => {
       if (name === "stats") {
         const s = await getOverviewStats(period);
-        return [
-          `**Development stats (last ${days} days)**`,
-          `Commits: **${s.commits}** | Pushes: **${s.pushes}**`,
-          `PRs opened: **${s.pullRequestsOpened}** | merged: **${s.pullRequestsMerged}** | closed: **${s.pullRequestsClosed}**`,
-          `Releases: **${s.releases}** | Issues opened: **${s.issuesOpened}**`,
-          `Active contributors: **${s.activeContributors}** | Active repositories: **${s.repositoriesActive}**`,
-        ].join("\n");
+        return embedMsg({
+          title: `📊 Development Stats`,
+          description: `Activity for the last **${days} day${days === 1 ? "" : "s"}**`,
+          color: 0x5865f2,
+          fields: [
+            { name: "Commits", value: `\`${s.commits}\``, inline: true },
+            { name: "Pushes", value: `\`${s.pushes}\``, inline: true },
+            { name: "Contributors", value: `\`${s.activeContributors}\``, inline: true },
+            { name: "PRs Opened", value: `\`${s.pullRequestsOpened}\``, inline: true },
+            { name: "PRs Merged", value: `\`${s.pullRequestsMerged}\``, inline: true },
+            { name: "PRs Closed", value: `\`${s.pullRequestsClosed}\``, inline: true },
+            { name: "Releases", value: `\`${s.releases}\``, inline: true },
+            { name: "Issues Opened", value: `\`${s.issuesOpened}\``, inline: true },
+            { name: "Active Repos", value: `\`${s.repositoriesActive}\``, inline: true },
+          ],
+          footer: { text: "GitHub Activity Bot" },
+          timestamp: new Date().toISOString(),
+        });
       }
 
       if (name === "contributors") {
         const top = await getTopContributors(period, 12);
-        if (!top.length) return `No contributor commit activity found in the last ${days} days.`;
-        return `**Top contributors by commits (last ${days} days)**\n` + top.map((c, i) => `${i + 1}. ${c.login} — ${c.commits}`).join("\n");
+        if (!top.length) return embedMsg(infoEmbed("👥 Contributors", `No commit activity found in the last **${days} day${days === 1 ? "" : "s"}**.`, 0x6b7280));
+        const medals = ["🥇", "🥈", "🥉"];
+        const lines = top.map((c, i) => `${medals[i] ?? `\`${String(i + 1).padStart(2, " ")}.\``} **${c.login}** — ${c.commits} commit${c.commits === 1 ? "" : "s"}`).join("\n");
+        return embedMsg({
+          title: "👥 Top Contributors",
+          description: `By commits in the last **${days} day${days === 1 ? "" : "s"}**\n\n${lines}`.slice(0, 4096),
+          color: 0x238636,
+          footer: { text: "GitHub Activity Bot" },
+          timestamp: new Date().toISOString(),
+        });
       }
 
       if (name === "repositories") {
-        const { data, error } = await supabase.from("repositories").select("full_name,private,archived").eq("active", true).order("full_name").limit(30);
+        const { data, error } = await supabase.from("repositories").select("full_name,private,archived,html_url").eq("active", true).order("full_name").limit(30);
         if (error) throw error;
         const rows = data ?? [];
-        if (!rows.length) return "No repositories discovered yet. Install the GitHub App and wait for a webhook or trigger a repository sync.";
-        return `**Tracked repositories (${rows.length}${rows.length === 30 ? "+" : ""})**\n` + rows.map((r: any) => `• ${r.private ? "🔒" : "📦"} ${r.full_name}${r.archived ? " _(archived)_" : ""}`).join("\n");
+        if (!rows.length) return embedMsg(infoEmbed("📦 Repositories", "No repositories discovered yet. Install the GitHub App and trigger a sync or wait for a webhook event.", 0x6b7280));
+        const lines = rows.map((r: any) => `${r.private ? "🔒" : "📂"} [${r.full_name}](${r.html_url ?? `https://github.com/${r.full_name}`})${r.archived ? " `archived`" : ""}`).join("\n");
+        return embedMsg({
+          title: "📦 Tracked Repositories",
+          description: `Showing **${rows.length}** active repositor${rows.length === 1 ? "y" : "ies"}\n\n${lines}`.slice(0, 4096),
+          color: 0x1f6feb,
+          footer: { text: "GitHub Activity Bot" },
+          timestamp: new Date().toISOString(),
+        });
       }
 
       if (name === "repo") {
         const rawRepo = opt(interaction, "name");
-        if (!rawRepo) return "Provide a repository name, e.g. `owner/repo`.";
+        if (!rawRepo) return embedMsg(infoEmbed("🔎 Repository", "Provide a repository name, e.g. `/repo name:owner/repo`.", 0x6b7280));
         const repo = rawRepo.replace(/[^\w./-]/g, "").slice(0, 120);
-        if (!repo) return "Provide a valid repository name, e.g. `owner/repo`.";
+        if (!repo) return embedMsg(infoEmbed("🔎 Repository", "Provide a valid repository name, e.g. `owner/repo`.", 0x6b7280));
         const { data, error } = await supabase
-          .from("repositories").select("id,full_name,html_url,private,archived,default_branch,pushed_at")
+          .from("repositories").select("id,full_name,html_url,private,archived,default_branch,pushed_at,description")
           .ilike("full_name", `%${repo}%`).limit(5);
         if (error) throw error;
         const match = (data ?? [])[0];
-        if (!match) return `No tracked repository matching \`${repo}\`.`;
+        if (!match) return embedMsg(infoEmbed("🔎 Repository", `No tracked repository matching \`${repo}\`.`, 0x6b7280));
         const since = lastNDays(days);
         const [{ count: commitCount }, { count: prCount }] = await Promise.all([
           supabase.from("commits").select("id", { count: "exact", head: true }).eq("repository_id", match.id).gte("occurred_at", since.start.toISOString()),
           supabase.from("activity_events").select("id", { count: "exact", head: true }).eq("repository_id", match.id).eq("event_type", "pull_request").gte("occurred_at", since.start.toISOString()),
         ]);
-        return [
-          `**${match.full_name}** ${match.private ? "(private)" : "(public)"}${match.archived ? " archived" : ""}`,
-          match.html_url ?? "",
-          `Default branch: \`${match.default_branch ?? "unknown"}\``,
-          `Last push: ${match.pushed_at ?? "unknown"}`,
-          `Last ${days} days: ${commitCount ?? 0} commits, ${prCount ?? 0} PR events`,
-        ].filter(Boolean).join("\n");
+        return embedMsg({
+          title: `${match.private ? "🔒" : "📂"} ${match.full_name}`,
+          url: match.html_url ?? undefined,
+          description: match.description ? String(match.description).slice(0, 250) : undefined,
+          color: 0x8957e5,
+          fields: [
+            { name: "Visibility", value: match.private ? "Private" : "Public", inline: true },
+            { name: "Status", value: match.archived ? "Archived" : "Active", inline: true },
+            { name: "Default Branch", value: `\`${match.default_branch ?? "unknown"}\``, inline: true },
+            { name: `Last ${days} Days`, value: `**${commitCount ?? 0}** commits • **${prCount ?? 0}** PR events`, inline: false },
+            { name: "Last Push", value: match.pushed_at ? `<t:${Math.floor(new Date(match.pushed_at).getTime() / 1000)}:R>` : "Unknown", inline: true },
+          ],
+          footer: { text: "GitHub Activity Bot" },
+          timestamp: new Date().toISOString(),
+        });
       }
 
       if (name === "weekly") {
-        const { data, error } = await supabase.from("weekly_reports").select("week_start,week_end,stats,ai_summary").order("week_start", { ascending: false }).limit(1).maybeSingle();
+        const { data, error } = await supabase.from("weekly_reports").select("week_start,week_end,stats,ai_summary,discord_message_id").order("week_start", { ascending: false }).limit(1).maybeSingle();
         if (error) throw error;
-        if (!data) return "No weekly report has been generated yet. Configure the Vercel cron job and required environment variables.";
+        if (!data) return embedMsg(infoEmbed("🗓️ Weekly Report", "No weekly report has been generated yet. Check Vercel cron configuration and required environment variables.", 0x6b7280));
         const s = data.stats as any;
-        const header = `**Weekly report (${data.week_start} to ${data.week_end})**\nCommits: ${s?.commits ?? 0} | PRs opened: ${s?.pullRequestsOpened ?? 0} | merged: ${s?.pullRequestsMerged ?? 0} | contributors: ${s?.activeContributors ?? 0}`;
-        const summary = data.ai_summary ? `\n\n${String(data.ai_summary).slice(0, 1400)}` : "";
-        return header + summary;
+        const summary = data.ai_summary ? String(data.ai_summary).slice(0, 3500) : "_No AI summary available._";
+        return embedMsg({
+          title: "🗓️ Latest Weekly Report",
+          description: `**${data.week_start} → ${data.week_end}** (UTC)\n\n${summary}`.slice(0, 4096),
+          color: 0x1f6feb,
+          fields: [
+            { name: "Commits", value: `\`${s?.commits ?? 0}\``, inline: true },
+            { name: "PRs Opened", value: `\`${s?.pullRequestsOpened ?? 0}\``, inline: true },
+            { name: "PRs Merged", value: `\`${s?.pullRequestsMerged ?? 0}\``, inline: true },
+            { name: "Contributors", value: `\`${s?.activeContributors ?? 0}\``, inline: true },
+            { name: "Releases", value: `\`${s?.releases ?? 0}\``, inline: true },
+            { name: "Active Repos", value: `\`${s?.repositoriesActive ?? 0}\``, inline: true },
+          ],
+          footer: { text: "Full report (with heatmap) is posted in the weekly channel" },
+          timestamp: new Date().toISOString(),
+        });
       }
 
-      return `Unknown command: ${name ?? "?"}`;
+      return msg(`Unknown command: ${name ?? "?"}`);
     })());
 
-    return res.status(200).json(msg(content));
+    return res.status(200).json(payload);
   } catch (e) {
     console.error("Discord interaction error", e instanceof Error ? e.message : "unknown error");
-    return res.status(200).json(msg("Command failed. Check server logs for details."));
+    return res.status(200).json(embedMsg(infoEmbed("⚠️ Command Error", "Something went wrong while processing that command. Please try again or check server logs.", 0xed4245)));
   }
 }

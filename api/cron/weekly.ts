@@ -82,17 +82,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const repoLines = repoActivity.slice(0, 8).map((r: any) => `• ${r.fullName}: ${r.commits} commits, ${r.pullRequestsOpened} PRs opened, ${r.pullRequestsMerged} merged`).join("\n") || "• No repository activity recorded.";
 
     const embed = {
-      title: `Weekly development report`,
-      description: `Period: **${weekStart}** to **${weekEnd}** (UTC)\n\n${aiSummary.slice(0, 3000)}`,
+      title: `🗓️ Weekly Development Report`,
+      description: `**Period:** ${weekStart} → ${weekEnd} (UTC)\n\n${aiSummary.slice(0, 3000)}`,
       color: 0x1f6feb,
       fields: [
-        { name: "Totals", value: `Commits: **${totals.commits}**\nPRs opened: **${totals.pullRequestsOpened}**\nPRs merged: **${totals.pullRequestsMerged}**\nActive contributors: **${totals.activeContributors}**`, inline: true },
-        { name: "Activity", value: `Pushes: **${totals.pushes}**\nReleases: **${totals.releases}**\nIssues opened: **${totals.issuesOpened}**\nActive repos: **${totals.repositoriesActive}**`, inline: true },
-        { name: "Repository activity", value: repoLines.slice(0, 1024) },
+        { name: "📈 Totals", value: `Commits: **${totals.commits}**\nPRs opened: **${totals.pullRequestsOpened}**\nPRs merged: **${totals.pullRequestsMerged}**\nContributors: **${totals.activeContributors}**`, inline: true },
+        { name: "⚡ Activity", value: `Pushes: **${totals.pushes}**\nReleases: **${totals.releases}**\nIssues opened: **${totals.issuesOpened}**\nActive repos: **${totals.repositoriesActive}**`, inline: true },
+        { name: "📦 Repository activity", value: repoLines.slice(0, 1024) },
       ],
       image: { url: "attachment://contribution-heatmap.png" },
       timestamp: new Date().toISOString(),
-      footer: { text: "GitHub Activity Bot • data from tracked GitHub webhooks" },
+      footer: { text: "GitHub Activity Bot • tracked webhook activity" },
     };
 
     const message = await sendDiscordWebhookWithFile(env.DISCORD_WEEKLY_WEBHOOK_URL, { embeds: [embed] }, {

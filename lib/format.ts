@@ -30,18 +30,20 @@ export function formatPushEmbed(input: {
   commits: Array<{ sha: string; message: string; author: string; url?: string | null }>;
   compareUrl?: string | null;
 }): DiscordEmbed {
-  const lines = input.commits.slice(0, 10).map((c) => {
+  const lines = input.commits.slice(0, 8).map((c) => {
     const sha = c.sha.slice(0, 7);
-    const msg = truncate(c.message.split("\n")[0], 90);
+    const msg = truncate(c.message.split("\n")[0], 100);
     const link = c.url ? `[\`${sha}\`](${c.url})` : `\`${sha}\``;
-    return `${link} ${esc(msg)} — ${esc(c.author)}`;
+    return `> ${link} ${esc(msg)}\n> — *${esc(c.author)}*`;
   });
-  const more = input.commits.length > 10 ? `\n…and ${input.commits.length - 10} more` : "";
+  const more = input.commits.length > 8 ? `\n*…and ${input.commits.length - 8} more commit${input.commits.length - 8 === 1 ? "" : "s"}*` : "";
   return {
-    title: `Push to ${input.repoFullName}`,
+    author: { name: input.repoFullName, url: input.repoUrl ?? undefined },
+    title: `⬆️ ${input.commits.length} commit${input.commits.length === 1 ? "" : "s"} pushed to \`${input.branch}\``,
     url: input.compareUrl ?? input.repoUrl ?? undefined,
     color: COLORS.push,
-    description: `**${esc(input.pusher)}** pushed **${input.commits.length}** commit${input.commits.length === 1 ? "" : "s"} to \`${input.branch}\`\n\n${lines.join("\n")}${more}`.slice(0, 4096),
+    description: `**${esc(input.pusher)}** pushed to **${input.repoFullName}**\n\n${lines.join("\n")}${more}`.slice(0, 4096),
+    footer: { text: "GitHub Push" },
     timestamp: new Date().toISOString(),
   };
 }
@@ -60,17 +62,24 @@ export function formatPREmbed(input: {
 }): DiscordEmbed {
   let color = COLORS.prUpdate;
   let label = `Pull request ${input.action}`;
-  if (input.action === "opened" || input.action === "reopened") color = COLORS.prOpen;
-  if (input.action === "closed" && input.merged) { color = COLORS.prMerged; label = "Pull request merged"; }
-  else if (input.action === "closed") { color = COLORS.prClosed; label = "Pull request closed"; }
-  const fields: DiscordEmbed["fields"] = [{ name: "Repository", value: input.repoFullName, inline: true }];
+  let icon = "🔄";
+  if (input.action === "opened" || input.action === "reopened") { color = COLORS.prOpen; icon = "🟢"; }
+  if (input.action === "closed" && input.merged) { color = COLORS.prMerged; label = "Pull request merged"; icon = "🟣"; }
+  else if (input.action === "closed") { color = COLORS.prClosed; label = "Pull request closed"; icon = "🔴"; }
+  if (input.action === "synchronize") { label = "Pull request updated"; icon = "🔄"; }
+  if (input.action === "ready_for_review") { label = "Pull request ready for review"; icon = "👀"; }
+  const fields: DiscordEmbed["fields"] = [
+    { name: "Repository", value: `[${input.repoFullName}](${input.repoUrl ?? input.url})`, inline: true },
+    { name: "Author", value: esc(input.author), inline: true },
+  ];
   if (input.base || input.head) fields.push({ name: "Branches", value: `\`${input.head ?? "?"}\` → \`${input.base ?? "?"}\``, inline: true });
   return {
-    title: `#${input.number} ${truncate(input.title, 120)}`,
+    title: `${icon} #${input.number} ${truncate(input.title, 120)}`,
     url: input.url,
     color,
-    description: `**${label}** by ${esc(input.author)}`,
+    description: `**${label}**`,
     fields,
+    footer: { text: "GitHub Pull Request" },
     timestamp: new Date().toISOString(),
   };
 }
@@ -87,11 +96,19 @@ export function formatReleaseEmbed(input: {
   draft?: boolean;
 }): DiscordEmbed {
   const kind = input.draft ? "Draft release" : input.prerelease ? "Pre-release" : "Release";
+  const icon = input.prerelease ? "🧪" : "🚀";
   return {
-    title: `${kind}: ${truncate(input.name || input.tag, 120)}`,
+    author: { name: input.repoFullName },
+    title: `${icon} ${kind}: ${truncate(input.name || input.tag, 120)}`,
     url: input.url,
     color: COLORS.release,
-    description: `**${input.action}** in ${input.repoFullName} by ${esc(input.author)}\nTag: \`${input.tag}\`\n\n${truncate(input.body, 700) || "_No release notes._"}`.slice(0, 4096),
+    description: truncate(input.body, 900) || "_No release notes provided._",
+    fields: [
+      { name: "Tag", value: `\`${input.tag}\``, inline: true },
+      { name: "Author", value: esc(input.author), inline: true },
+      { name: "Action", value: esc(input.action), inline: true },
+    ],
+    footer: { text: "GitHub Release" },
     timestamp: new Date().toISOString(),
   };
 }
@@ -104,11 +121,14 @@ export function formatIssueEmbed(input: {
   url: string;
   author: string;
 }): DiscordEmbed {
+  const icon = input.action === "closed" ? "✅" : input.action === "reopened" ? "🔁" : "🪲";
   return {
-    title: `Issue #${input.number}: ${truncate(input.title, 120)}`,
+    author: { name: input.repoFullName },
+    title: `${icon} Issue #${input.number}: ${truncate(input.title, 120)}`,
     url: input.url,
-    color: COLORS.issue,
-    description: `**${input.action}** in ${input.repoFullName} by ${esc(input.author)}`,
+    color: input.action === "closed" ? 0x8957e5 : COLORS.issue,
+    description: `**${esc(input.action[0]?.toUpperCase() + input.action.slice(1))}** by ${esc(input.author)}`,
+    footer: { text: "GitHub Issue" },
     timestamp: new Date().toISOString(),
   };
 }
