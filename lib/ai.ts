@@ -67,7 +67,7 @@ export async function summarizeWeeklyActivity(input: WeeklyAIInput): Promise<str
         messages: [{ role: "user", content: `Summarize this GitHub activity JSON:\n\n${JSON.stringify(input)}` }],
       }),
     });
-    if (!res.ok) throw new Error(`AI request failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`AI request failed: ${res.status}`);
     const json = await res.json() as any;
     const text = json?.content?.map((c: any) => c.text).filter(Boolean).join("\n");
     if (!text) throw new Error("AI response missing text");
@@ -84,7 +84,7 @@ export async function summarizeWeeklyActivity(input: WeeklyAIInput): Promise<str
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`AI request failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`AI request failed: ${res.status}`);
   const json = await res.json() as any;
   const text = json?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || !text.trim()) throw new Error("AI response missing content");

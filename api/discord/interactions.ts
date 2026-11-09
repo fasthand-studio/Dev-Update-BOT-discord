@@ -5,9 +5,17 @@ import { supabase } from "../../lib/supabase.js";
 
 export const config = { api: { bodyParser: false } };
 
+const MAX_BODY_BYTES = 256 * 1024;
+
 async function readRawBody(req: VercelRequest): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buf.length;
+    if (size > MAX_BODY_BYTES) throw new Error("Request body too large");
+    chunks.push(buf);
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -76,8 +84,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (name === "repo") {
-        const repo = opt(interaction, "name");
-        if (!repo) return "Provide a repository name, e.g. `owner/repo`.";
+        const rawRepo = opt(interaction, "name");
+        if (!rawRepo) return "Provide a repository name, e.g. `owner/repo`.";
+        const repo = rawRepo.replace(/[^\w./-]/g, "").slice(0, 120);
+        if (!repo) return "Provide a valid repository name, e.g. `owner/repo`.";
         const { data, error } = await supabase
           .from("repositories").select("id,full_name,html_url,private,archived,default_branch,pushed_at")
           .ilike("full_name", `%${repo}%`).limit(5);
@@ -113,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json(msg(content));
   } catch (e) {
-    console.error("Discord interaction error", e);
-    return res.status(200).json(msg(`Error: ${errMsg(e)}`));
+    console.error("Discord interaction error", e instanceof Error ? e.message : "unknown error");
+    return res.status(200).json(msg("Command failed. Check server logs for details."));
   }
 }

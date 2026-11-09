@@ -191,7 +191,12 @@ See [`.env.example`](.env.example) for the full list.
 - **Event-level dedup:** selected events also store `external_id` with a unique constraint.
 - **Missed events:** webhooks are the primary source; GitHub may retry failed deliveries. The `/api/github/sync` endpoint can repair repository catalog drift. For strict historical backfill, add a manual import job using GitHub App installation tokens (not included to keep the tool small).
 - **Signature verification:** GitHub webhooks require a valid `X-Hub-Signature-256`; Discord interactions require valid Ed25519 headers.
+- **Protected maintenance endpoints:** `/api/cron/weekly` and `/api/github/sync` require `CRON_SECRET` (Bearer token) when configured and are denied in production when missing.
 - **No hardcoded project identity:** AI summaries and embeds are generated from observed event payloads/database records.
+
+## Public repository security
+
+This codebase can be public **if and only if** secrets remain outside git. See [`SECURITY.md`](SECURITY.md) and [`.env.example`](.env.example). Never commit `.env` files, keys, tokens, webhook secrets, Discord webhook URLs, or AI credentials. Configure secrets in Vercel/Supabase/provider dashboards and rotate immediately if exposed.
 
 ## Local checks
 

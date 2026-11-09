@@ -16,11 +16,22 @@ import {
   lastNDays,
 } from "../../lib/stats.js";
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
 function isAuthorized(req: VercelRequest): boolean {
   // Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` when CRON_SECRET is set.
-  if (!env.CRON_SECRET) return true; // allow in dev/simple setups; deployment docs should set it.
+  // Require a secret in production/public deployments to prevent unauthorized report generation/spend.
+  const secret = env.CRON_SECRET;
+  if (!secret) {
+    return process.env.NODE_ENV !== "production";
+  }
   const auth = req.headers.authorization;
-  return auth === `Bearer ${env.CRON_SECRET}`;
+  return typeof auth === "string" && timingSafeEqual(auth, `Bearer ${secret}`);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -63,9 +74,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notableCommits,
         releases,
       });
-    } catch (e: any) {
-      console.error("AI summary failed", e);
-      aiSummary = `AI summary unavailable: ${String(e?.message ?? e).slice(0, 200)}`;
+    } catch (e) {
+      console.error("AI summary failed", e instanceof Error ? e.message : "unknown error");
+      aiSummary = "AI summary unavailable. Check server configuration and logs.";
     }
 
     const repoLines = repoActivity.slice(0, 8).map((r: any) => `• ${r.fullName}: ${r.commits} commits, ${r.pullRequestsOpened} PRs opened, ${r.pullRequestsMerged} merged`).join("\n") || "• No repository activity recorded.";
@@ -99,8 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }, { onConflict: "week_start" });
 
     return res.status(200).json({ ok: true, weekStart, weekEnd, totals });
-  } catch (e: any) {
-    console.error("Weekly cron failed", e);
-    return res.status(500).json({ error: "Weekly report failed", detail: String(e?.message ?? e).slice(0, 300) });
+  } catch (e) {
+    console.error("Weekly cron failed", e instanceof Error ? e.message : "unknown error");
+    return res.status(500).json({ error: "Weekly report failed" });
   }
 }

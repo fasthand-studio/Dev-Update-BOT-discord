@@ -5,9 +5,17 @@ import { handleGitHubEvent } from "../../lib/github-events.js";
 
 export const config = { api: { bodyParser: false } };
 
+const MAX_BODY_BYTES = 5 * 1024 * 1024;
+
 async function readRawBody(req: VercelRequest): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buf.length;
+    if (size > MAX_BODY_BYTES) throw new Error("Request body too large");
+    chunks.push(buf);
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -30,10 +38,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await handleGitHubEvent({ deliveryId, event, payload });
     await finishDelivery(deliveryId, "processed");
     return res.status(200).json({ ok: true, ...result });
-  } catch (err: any) {
-    console.error("GitHub webhook error", err);
+  } catch (err) {
+    console.error("GitHub webhook error", err instanceof Error ? err.message : "unknown error");
     const deliveryId = String(req.headers["x-github-delivery"] ?? "");
-    if (deliveryId) await finishDelivery(deliveryId, "failed", String(err?.message ?? err)).catch(() => null);
+    if (deliveryId) await finishDelivery(deliveryId, "failed", "processing error").catch(() => null);
     return res.status(500).json({ error: "Webhook processing failed" });
   }
 }
