@@ -30,6 +30,29 @@ export async function installationOctokit(installationId: number): Promise<Octok
   });
 }
 
+function normalizeTimestamp(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 1e12 ? value : value * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      const ms = s.length >= 13 ? n : n * 1000;
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
 export async function listTargetInstallations(): Promise<number[]> {
   if (env.GITHUB_INSTALLATION_IDS?.length) return env.GITHUB_INSTALLATION_IDS;
   const app = appOctokit();
