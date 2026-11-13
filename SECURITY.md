@@ -14,6 +14,7 @@ Treat these as credentials:
 - `DISCORD_UPDATES_WEBHOOK_URL` and `DISCORD_WEEKLY_WEBHOOK_URL` (webhook URLs grant posting access)
 - `AI_API_KEY`
 - `CRON_SECRET`
+- `DATABASE_URL` (optional; direct Postgres connection string containing the DB password)
 
 If any credential is accidentally committed, exposed, or posted publicly, **rotate/revoke it immediately** and replace it in Vercel/Supabase/GitHub/Discord/provider dashboards. Rewriting git history does not reliably undo exposure.
 

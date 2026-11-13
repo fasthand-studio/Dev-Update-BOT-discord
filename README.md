@@ -152,6 +152,30 @@ The included [`vercel.json`](vercel.json) configures:
 
 Adjust the cron schedule/timezone strategy as needed.
 
+### 6.1. Exact-minute scheduling with Supabase pg_cron (optional)
+
+On the Vercel **Hobby** plan, cron jobs may fire at any point within the scheduled hour, so the report can land anywhere
+between 1:00 PM and 1:59 PM. For exact-minute delivery, drive the schedule from Supabase's built-in `pg_cron` + `pg_net`,
+the same pattern FastHand Status uses. This requires `pg_cron` and `pg_net` extensions and `pg_cron`'s `net.http_post`
+to reach the deployment URL (Deployment Protection must be off — see section 6).
+
+1. In Supabase: **Database → Extensions → enable `pg_cron` and `pg_net`.**
+2. **Dashboard → Vault → add a secret** named `fastydiscord_cron_secret` whose value is your `CRON_SECRET`.
+3. Run the SQL in [`supabase/migrations/0003_weekly_report_pg_cron.sql`](supabase/migrations/0003_weekly_report_pg_cron.sql) in the SQL editor.
+   It registers a job named `fastydiscord-weekly-report` at `5 7 * * 5` (Friday 07:05 UTC = 13:05 Bangladesh time)
+   which POSTs to `https://fastydiscord.vercel.app/api/cron/weekly` with the Vault-stored secret.
+
+The handler is idempotent on `weekly_reports.week_start`, so keeping the Vercel Cron as a fallback is safe — the first
+run posts the report and the second is skipped. Once pg_cron is verified in `cron.job_run_details`, you may remove the
+entry from [`vercel.json`](vercel.json).
+
+```sql
+select jobid, jobname, command from cron.job where jobname = 'fastydiscord-weekly-report';
+select start_time, status, return_message from cron.job_run_details
+  where jobname = 'fastydiscord-weekly-report' order by start_time desc limit 5;
+select cron.unschedule('fastydiscord-weekly-report');
+```
+
 ### 7. Initial repository sync (recommended)
 
 After deployment, trigger a protected sync to populate the repository catalog:
