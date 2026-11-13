@@ -24,7 +24,7 @@ It is designed to be modular, serverless-friendly, and low-cost: no VPS, no cont
 | Repository catalog | GitHub App installation API; refreshed on installation events and `POST /api/github/sync` |
 | Discord updates | Discord channel webhooks |
 | Discord commands | `POST /api/discord/interactions` (Ed25519 signature verification, no Gateway) |
-| Weekly report | `GET/POST /api/cron/weekly` (Vercel Cron, Friday 12:50 UTC by default) |
+| Weekly report | `GET/POST /api/cron/weekly` (Vercel Cron, Friday 12:50 Bangladesh time / 06:50 UTC by default) |
 | AI summary | Stateless, configurable provider/model; receives structured JSON only |
 
 ## Project layout
@@ -147,7 +147,7 @@ Set `AI_API_KEY` and `AI_MODEL`. For Cloudflare, also set `CLOUDFLARE_ACCOUNT_ID
 5. Deploy.
 
 The included [`vercel.json`](vercel.json) configures:
-- `/api/cron/weekly` every Friday at 12:50 UTC (`50 12 * * 5`)
+- `/api/cron/weekly` every Friday at 12:50 Bangladesh time (`50 6 * * 5` UTC — Vercel cron always runs on UTC)
 - 60s max duration for API functions
 
 Adjust the cron schedule/timezone strategy as needed.
