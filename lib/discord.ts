@@ -50,6 +50,32 @@ export async function sendDiscordWebhookWithFile(
   return text ? JSON.parse(text) : null;
 }
 
+/** Discord allows at most 10 embeds per message. */
+export const MAX_EMBEDS_PER_MESSAGE = 10;
+
+/**
+ * Discord rejects a message whose embeds exceed the limit, and also rejects
+ * an embed whose total character count exceeds 6000. We trim defensively so a
+ * long week never causes the whole report to fail.
+ */
+export function clampEmbeds(embeds: DiscordEmbed[]): DiscordEmbed[] {
+  const MAX_EMBED_TOTAL = 6000;
+  const out: DiscordEmbed[] = [];
+  let total = 0;
+  for (const e of embeds) {
+    if (out.length >= MAX_EMBEDS_PER_MESSAGE) break;
+    const size =
+      (e.title?.length ?? 0) +
+      (e.description?.length ?? 0) +
+      (e.footer?.text?.length ?? 0) +
+      (e.fields ?? []).reduce((s, f) => s + f.name.length + f.value.length, 0);
+    if (total + size > MAX_EMBED_TOTAL) break;
+    total += size;
+    out.push(e);
+  }
+  return out.length ? out : embeds.slice(0, 1);
+}
+
 export function interactionResponse(type: number, data?: any) {
   return new Response(JSON.stringify({ type, data }), {
     status: 200,

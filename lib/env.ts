@@ -46,4 +46,8 @@ export const env = {
 
   get CRON_SECRET() { return optional("CRON_SECRET"); },
   get LOG_DEBUG() { return optionalBool("LOG_DEBUG", false); },
+
+  // Direct Postgres connection (Supabase pooler, transaction mode, port 6543).
+  // Optional: when unset the app falls back to the PostgREST client in lib/supabase.ts.
+  get DATABASE_URL() { return optional("DATABASE_URL"); },
 };

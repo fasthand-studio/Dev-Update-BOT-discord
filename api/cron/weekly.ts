@@ -1,20 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { env } from "../../lib/env.js";
 import { supabase } from "../../lib/supabase.js";
-import { sendDiscordWebhookWithFile } from "../../lib/discord.js";
+import { sendDiscordWebhookWithFile, clampEmbeds } from "../../lib/discord.js";
 import { renderContributionHeatmap } from "../../lib/heatmap.js";
-import { summarizeWeeklyActivity } from "../../lib/ai.js";
-import {
-  getDailyCommitCounts,
-  getNotableCommits,
-  getNotablePRs,
-  getOverviewStats,
-  getReleases,
-  getRepositoryActivity,
-  getTopContributors,
-  iso,
-  lastNDays,
-} from "../../lib/stats.js";
+import { summarizeWeeklyActivity, buildFallbackSummary, type WeeklyAIInput } from "../../lib/ai.js";
+import { buildWeeklyReportEmbeds } from "../../lib/report.js";
+import { getWeeklyReportData, getDailyCommitCounts, lastNDays, iso } from "../../lib/stats.js";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -48,68 +39,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, skipped: true, weekStart });
     }
 
-    const [totals, repoActivity, contributors, notablePRs, notableCommits, releases, daily] = await Promise.all([
-      getOverviewStats(period),
-      getRepositoryActivity(period, 12),
-      getTopContributors(period, 12),
-      getNotablePRs(period, 8),
-      getNotableCommits(period, 10),
-      getReleases(period, 8),
-      getDailyCommitCounts(182),
-    ]);
+    // One aggregation pass in Postgres (or PostgREST fallback).
+    const reportData = await getWeeklyReportData(period);
+    const { overview, repositories, contributors } = reportData;
 
+    const daily = await getDailyCommitCounts(182);
     const heatmap = renderContributionHeatmap(daily, 26);
 
-    let aiSummary = "AI summary unavailable: configure AI_API_KEY, AI_BASE_URL (if needed), and AI_MODEL.";
-    try {
-      aiSummary = await summarizeWeeklyActivity({
-        period: { start: iso(period.start), end: iso(period.end) },
-        totals,
-        repositories: repoActivity.map((r: any) => ({
-          fullName: r.fullName, commits: r.commits, pullRequestsOpened: r.pullRequestsOpened,
-          pullRequestsMerged: r.pullRequestsMerged, releases: r.releases, issuesOpened: r.issuesOpened,
-        })),
-        contributors: contributors.map((c) => ({ login: c.login, commits: c.commits, pullRequests: 0 })),
-        notablePullRequests: notablePRs,
-        notableCommits,
-        releases,
-      });
-    } catch (e) {
-      console.error("AI summary failed", e instanceof Error ? e.message : "unknown error");
-      aiSummary = "AI summary unavailable. Check server configuration and logs.";
-    }
-
-    const repoLines = repoActivity.slice(0, 8).map((r: any) => `• ${r.fullName}: ${r.commits} commits, ${r.pullRequestsOpened} PRs opened, ${r.pullRequestsMerged} merged`).join("\n") || "• No repository activity recorded.";
-
-    const embed = {
-      title: `🗓️ Weekly Development Report`,
-      description: `**Period:** ${weekStart} → ${weekEnd} (UTC)\n\n${aiSummary.slice(0, 3000)}`,
-      color: 0x1f6feb,
-      fields: [
-        { name: "📈 Totals", value: `Commits: **${totals.commits}**\nPRs opened: **${totals.pullRequestsOpened}**\nPRs merged: **${totals.pullRequestsMerged}**\nContributors: **${totals.activeContributors}**`, inline: true },
-        { name: "⚡ Activity", value: `Pushes: **${totals.pushes}**\nReleases: **${totals.releases}**\nIssues opened: **${totals.issuesOpened}**\nActive repos: **${totals.repositoriesActive}**`, inline: true },
-        { name: "📦 Repository activity", value: repoLines.slice(0, 1024) },
-      ],
-      image: { url: "attachment://contribution-heatmap.png" },
-      timestamp: new Date().toISOString(),
-      footer: { text: "GitHub Activity Bot • tracked webhook activity" },
+    const aiInput: WeeklyAIInput = {
+      period: { start: weekStart, end: weekEnd },
+      overview,
+      repositories,
+      contributors,
     };
 
-    const message = await sendDiscordWebhookWithFile(env.DISCORD_WEEKLY_WEBHOOK_URL, { embeds: [embed] }, {
-      name: "contribution-heatmap.png",
-      contentType: "image/png",
-      data: heatmap,
+    let summary = buildFallbackSummary(aiInput);
+    let aiUsed = false;
+    try {
+      summary = await summarizeWeeklyActivity(aiInput);
+      aiUsed = true;
+    } catch (e) {
+      console.error("AI summary failed", e instanceof Error ? e.message : "unknown error");
+    }
+
+    const { embeds } = buildWeeklyReportEmbeds({
+      period: { start: weekStart, end: weekEnd },
+      overview,
+      repositories,
+      contributors,
+      summary,
     });
+
+    const message = await sendDiscordWebhookWithFile(
+      env.DISCORD_WEEKLY_WEBHOOK_URL,
+      { embeds: clampEmbeds(embeds) },
+      { name: "contribution-heatmap.png", contentType: "image/png", data: heatmap },
+    );
 
     await supabase.from("weekly_reports").upsert({
       week_start: weekStart,
       week_end: weekEnd,
-      stats: totals,
-      ai_summary: aiSummary,
+      stats: {
+        ...overview,
+        repositories: repositories.map((r) => ({
+          fullName: r.fullName,
+          commits: r.commits,
+          pullRequestsOpened: r.pullRequestsOpened,
+          pullRequestsMerged: r.pullRequestsMerged,
+          releases: r.releases,
+          issuesOpened: r.issuesOpened,
+          filesChanged: r.filesChanged,
+          linesAdded: r.linesAdded,
+          linesRemoved: r.linesRemoved,
+        })),
+        contributors,
+        headline: summary.headline,
+        highlights: summary.highlights,
+        repoSummaries: summary.repositories,
+      },
+      ai_summary: summary.overview,
       discord_message_id: message?.id ? String(message.id) : null,
     }, { onConflict: "week_start" });
 
-    return res.status(200).json({ ok: true, weekStart, weekEnd, totals });
+    return res.status(200).json({
+      ok: true,
+      weekStart,
+      weekEnd,
+      aiUsed,
+      totals: overview,
+      repos: repositories.length,
+      contributors: contributors.length,
+    });
   } catch (e) {
     console.error("Weekly cron failed", e instanceof Error ? e.message : "unknown error");
     return res.status(500).json({ error: "Weekly report failed" });

@@ -12,7 +12,7 @@ It is designed to be modular, serverless-friendly, and low-cost: no VPS, no cont
 - **Stored activity history** in Supabase for stats and weekly reporting.
 - **Duplicate protection** using GitHub delivery IDs plus external event identifiers where useful.
 - **HTTP-based Discord slash commands**: `/stats`, `/contributors`, `/repositories`, `/weekly`, `/repo`.
-- **Weekly report** via Vercel Cron with totals, repository activity, a GitHub-style contribution heatmap image, and a configurable AI summary.
+- **Weekly report** via Vercel Cron with totals, repository activity, a GitHub-style contribution heatmap image, a configurable AI summary, per-repository "what happened" summaries, top contributors, and code stats (files changed, lines added/deleted).
 
 ## Architecture
 
@@ -147,7 +147,7 @@ Set `AI_API_KEY` and `AI_MODEL`. For Cloudflare, also set `CLOUDFLARE_ACCOUNT_ID
 5. Deploy.
 
 The included [`vercel.json`](vercel.json) configures:
-- `/api/cron/weekly` every Friday at 1:05 PM Bangladesh time (`5 7 * * 5` UTC — Vercel cron always runs on UTC)
+- `/api/cron/weekly` every Friday at 1:05 PM Bangladesh time (`5 7 * * 5` UTC — Vercel cron always runs on UTC). Note: on the Hobby plan Vercel may invoke the job anywhere within that hour, so the report can land between 1:00 PM and 1:59 PM.
 - 60s max duration for API functions
 
 Adjust the cron schedule/timezone strategy as needed.
@@ -180,6 +180,7 @@ See [`.env.example`](.env.example) for the full list.
 | `DISCORD_BOT_TOKEN` | yes | Used by command registration script |
 | `DISCORD_UPDATES_WEBHOOK_URL` | yes | Real-time activity channel webhook |
 | `DISCORD_WEEKLY_WEBHOOK_URL` | yes | Weekly report channel webhook |
+| `DATABASE_URL` | no | Direct Postgres connection (Supabase pooler, port 6543). Enables SQL aggregation in the weekly report; falls back to PostgREST when unset. See `.env.example`. |
 | `AI_PROVIDER` | no | `openai-compatible`, `anthropic-messages`, or `cloudflare` |
 | `AI_API_KEY` | for AI | AI provider API key / Cloudflare API token |
 | `AI_BASE_URL` | no | AI API base URL |

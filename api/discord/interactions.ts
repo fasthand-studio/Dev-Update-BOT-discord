@@ -155,19 +155,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (error) throw error;
         if (!data) return embedMsg(infoEmbed("🗓️ Weekly Report", "No weekly report has been generated yet. Check Vercel cron configuration and required environment variables.", 0x6b7280));
         const s = data.stats as any;
+
+        // Rebuild the digest from the stored report so the slash command shows
+        // the same per-repository breakdown as the posted report.
+        const repoSummaries: Record<string, string> = s?.repoSummaries ?? {};
+        const repoStats: any[] = Array.isArray(s?.repositories) ? s.repositories : [];
+        const contributorStats: any[] = Array.isArray(s?.contributors) ? s.contributors : [];
+
+        const repoField = repoStats.slice(0, 8).map((r) => {
+          const text = repoSummaries[r.fullName];
+          const stats: string[] = [`${r.commits ?? 0} commits`];
+          if (r.pullRequestsOpened) stats.push(`${r.pullRequestsOpened} PR opened`);
+          if (r.pullRequestsMerged) stats.push(`${r.pullRequestsMerged} merged`);
+          if (r.releases) stats.push(`${r.releases} release`);
+          return text ? `• **${r.fullName}** — ${text}\n   ${stats.join(", ")}` : `• **${r.fullName}** — ${stats.join(", ")}`;
+        }).join("\n");
+
+        const contribField = contributorStats.slice(0, 5)
+          .map((c, i) => `**${i + 1}. ${c.login}** — ${c.commits ?? 0} commits${c.pullRequests ? ` • ${c.pullRequests} PR` : ""}`)
+          .join("\n");
+
         const summary = data.ai_summary ? String(data.ai_summary).slice(0, 3500) : "_No AI summary available._";
+        const headline = s?.headline ? String(s.headline) : "🗓️ Latest Weekly Report";
+
+        const fields: any[] = [
+          { name: "📈 Commits", value: `\`${s?.commits ?? 0}\``, inline: true },
+          { name: "🔀 PRs", value: `\`${s?.pullRequestsOpened ?? 0}\` opened / \`${s?.pullRequestsMerged ?? 0}\` merged`, inline: true },
+          { name: "👥 Contributors", value: `\`${s?.activeContributors ?? 0}\``, inline: true },
+          { name: "📦 Repos", value: `\`${s?.repositoriesActive ?? 0}\``, inline: true },
+          { name: "🏷️ Releases", value: `\`${s?.releases ?? 0}\``, inline: true },
+          { name: "🐛 Issues", value: `\`${s?.issuesOpened ?? 0}\``, inline: true },
+          { name: "📁 Files changed", value: `\`${s?.filesChanged ?? 0}\``, inline: true },
+          { name: "📅 Active days", value: `\`${s?.activeDays ?? 0}\``, inline: true },
+        ];
+        if (repoField) fields.push({ name: "📦 By repository", value: repoField.slice(0, 1024), inline: false });
+        if (contribField) fields.push({ name: "🏆 Most contributed", value: contribField.slice(0, 1024), inline: false });
+
         return embedMsg({
-          title: "🗓️ Latest Weekly Report",
+          title: headline.slice(0, 256),
           description: `**${data.week_start} → ${data.week_end}** (UTC)\n\n${summary}`.slice(0, 4096),
           color: 0x1f6feb,
-          fields: [
-            { name: "Commits", value: `\`${s?.commits ?? 0}\``, inline: true },
-            { name: "PRs Opened", value: `\`${s?.pullRequestsOpened ?? 0}\``, inline: true },
-            { name: "PRs Merged", value: `\`${s?.pullRequestsMerged ?? 0}\``, inline: true },
-            { name: "Contributors", value: `\`${s?.activeContributors ?? 0}\``, inline: true },
-            { name: "Releases", value: `\`${s?.releases ?? 0}\``, inline: true },
-            { name: "Active Repos", value: `\`${s?.repositoriesActive ?? 0}\``, inline: true },
-          ],
+          fields,
           footer: { text: "Full report (with heatmap) is posted in the weekly channel" },
           timestamp: new Date().toISOString(),
         });

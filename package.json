@@ -17,13 +17,16 @@
     "@octokit/rest": "^21.1.1",
     "@octokit/webhooks-methods": "^5.1.1",
     "@supabase/supabase-js": "^2.49.1",
+    "@types/pg": "^8.23.1",
     "discord-interactions": "^4.1.0",
+    "pg": "^8.23.1",
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
     "@types/pngjs": "^6.0.5",
     "@vercel/node": "^5.1.14",
+    "pg-mem": "^3.0.14",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }
